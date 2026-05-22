@@ -1,0 +1,14 @@
+{
+  "name": "hospital-queue-frontend",
+  "private": true,
+  "scripts": {
+    "dev:doctor": "pnpm --filter @hospital/doctor dev",
+    "dev:display": "pnpm --filter @hospital/display dev",
+    "dev:patient": "pnpm --filter @hospital/patient dev",
+    "dev": "pnpm run -r --parallel dev",
+    "build": "pnpm run -r build"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}
