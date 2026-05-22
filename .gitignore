@@ -3,7 +3,7 @@
 Thumbs.db
 
 # 环境变量与密钥（保留 .env.example 作模板）
-.env
+
 .env.local
 .env.*
 !.env.example
