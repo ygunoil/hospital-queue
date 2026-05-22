@@ -1,21 +1,36 @@
-node_modules/
-dist/
+# OS
+.DS_Store
+Thumbs.db
+
+# 环境变量与密钥（保留 .env.example 作模板）
 .env
 .env.local
+.env.*
+!.env.example
+
+# 日志与本地开发
 *.log
-.DS_Store
+.hospital-dev.pids
+
+# Python
 __pycache__/
+*.py[cod]
 *.pyc
 .venv/
 venv/
-__pycache__/
-*.py[cod]
-.venv/
-server/.venv/
-frontend/node_modules/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node / pnpm
+node_modules/
 .pnpm-store/
+dist/
 *.tsbuildinfo
+
+# 前端各应用构建产物
+frontend/apps/*/dist/
 **/*.vue.js
 **/src/main.js
 **/src/index.js
-frontend/apps/*/dist/

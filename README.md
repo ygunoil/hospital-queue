@@ -4,32 +4,186 @@
 
 ---
 
-## 一键启动
+## 环境要求
+
+| 工具 | 版本建议 | 用途 |
+|------|----------|------|
+| Python | ≥ 3.11 | 后端运行时 |
+| [uv](https://docs.astral.sh/uv/) | 最新 | 后端依赖安装与运行 |
+| Node.js | ≥ 18 | 前端构建 |
+| pnpm | ≥ 8 | 前端 monorepo |
 
 ```bash
-# 1. 后端依赖
-cd backend && uv sync && cd ..
-
-# 2. 前端依赖
-cd frontend && pnpm install && cd ..
-
-# 3. 可选：配置 LLM（复制 .env.example 为 backend/.env 并填入 LLM_API_KEY）
-cp .env.example backend/.env
-
-# 4. 同时启动（或开三个终端分别启动）
-chmod +x scripts/start.sh && ./scripts/start.sh
+# 检查是否已安装
+python3 --version
+uv --version
+node -v && pnpm -v
 ```
 
-> 若 8000 端口被占用，可在 `backend/.env` 设置 `PORT=8001`，并同步设置前端 `VITE_API_BASE` / `VITE_WS_URL`。
+---
 
-| 端 | 地址 |
-|---|---|
-| 医生端 | http://localhost:5173 |
-| 候诊大屏 | http://localhost:5174 |
-| 患者 H5（演示：李婷婷 A016） | http://localhost:5175 |
-| API 文档 | http://localhost:8000/docs |
+## 启动与部署
 
-**演示路径**：打开三端 → 医生端点击「呼叫下一位」→ 大屏高亮 + 中英语音播报 → 患者端全屏提醒 + 震动。
+### 1. 首次安装依赖
+
+在项目根目录 `hospital/` 执行：
+
+```bash
+# 后端
+cd backend
+uv sync
+
+
+# 前端
+cd frontend
+pnpm install
+```
+
+### 2. 环境变量（可选）
+
+```bash
+cp .env.example backend/.env
+```
+
+编辑 `backend/.env`，常用项：
+
+```ini
+# LLM（OpenAI 兼容；留空则自动走规则 Mock）
+LLM_MODEL=openAI/gpt-3.5-turbo
+LLM_API_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=你的密钥
+LLM_USE_MOCK=false
+
+# 诊室信息
+DEPARTMENT=心内科
+ROOM=3号诊室
+DOCTOR_NAME=赵主任
+
+# 后端端口（默认 8000，避免与本机其他占 8000 的服务冲突）
+PORT=8000
+```
+
+开发模式下前端通过 **Vite 代理** 访问 `/api`、`/ws`（无需配置 CORS）。若不用代理、直连后端：
+
+```bash
+export VITE_API_BASE=http://127.0.0.1:8000
+export VITE_WS_URL=ws://127.0.0.1:8000/ws
+```
+
+### 3. 一键启动 / 停止（推荐本地演示）
+
+```bash
+chmod +x scripts/start.sh scripts/stop.sh
+
+# 启动（后端 + 三端前端）
+./scripts/start.sh
+
+# 停止（另一终端执行，或关闭 start 终端后补跑）
+./scripts/stop.sh
+```
+
+- **start.sh**：安装依赖 → 后端默认 **8000**（读 `backend/.env`）→ 前端 dev 自动代理到后端
+- **stop.sh**：按端口（8000 / 5173–5175）结束本项目进程；`Ctrl+C` 亦可
+
+> 若本机 **8000** 已被其他程序占用（如 `start_app.py`），请勿让前端直连 `localhost:8000`，应使用 `./scripts/start.sh` 或保持默认 8000。
+
+### 4. 分终端启动（开发调试）
+
+**终端 1 — 后端**
+
+```bash
+cd backend
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**终端 2 — 前端三端**
+
+```bash
+cd frontend
+pnpm run dev
+```
+
+或分别启动单个端：
+
+```bash
+pnpm run dev:doctor    # http://localhost:5173
+pnpm run dev:display   # http://localhost:5174
+pnpm run dev:patient   # http://localhost:5175
+```
+
+### 5. 访问地址
+
+| 端 | 本地地址 | 说明 |
+|---|---|---|
+| 医生端 | http://localhost:5173 | 呼叫 / 跳过 / 暂停 |
+| 候诊大屏 | http://localhost:5174 | 全屏 TV 模式，F11 全屏更佳 |
+| 患者 H5 | http://localhost:5175 | 演示患者：李婷婷 A016 |
+| API 文档 | http://127.0.0.1:8000/docs | Swagger（端口以 `.env` 为准） |
+| 健康检查 | http://127.0.0.1:8000/api/health | 含 `llm_mock` 字段即为本项目后端 |
+
+**演示路径**：打开三端 → 医生端「呼叫下一位」→ 大屏高亮 + 双语语音 → 患者端弹窗 + 震动。
+
+### 6. 生产构建与部署
+
+**后端**（单机 / 内网服务器）：
+
+```bash
+cd backend
+uv sync
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+```
+
+> MVP 使用内存队列，多 worker 会导致状态不一致，生产需改为 Redis/DB 后再加 workers。
+
+**前端**（构建静态资源，由 Nginx 托管）：
+
+```bash
+cd frontend
+pnpm install
+pnpm run build
+```
+
+产物目录：
+
+- `frontend/apps/doctor/dist`
+- `frontend/apps/display/dist`
+- `frontend/apps/patient/dist`
+
+构建时需注入后端地址（示例）：
+
+```bash
+VITE_API_BASE=https://api.your-hospital.com \
+VITE_WS_URL=wss://api.your-hospital.com/ws \
+pnpm run build
+```
+
+**Nginx 反向代理示例**（三端 + API 同域）：
+
+```nginx
+# API + WebSocket
+location /api/ { proxy_pass http://127.0.0.1:8000; }
+location /ws {
+  proxy_pass http://127.0.0.1:8000;
+  proxy_http_version 1.1;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "upgrade";
+}
+
+# 三端静态站（按路径或子域名拆分）
+location /doctor/ { alias /var/www/hospital/doctor/; try_files $uri $uri/ /doctor/index.html; }
+location /display/ { alias /var/www/hospital/display/; try_files $uri $uri/ /display/index.html; }
+location /patient/ { alias /var/www/hospital/patient/; try_files $uri $uri/ /patient/index.html; }
+```
+
+### 7. 常见问题
+
+| 现象 | 处理 |
+|------|------|
+| CORS / 404 访问 `/api/queue` | 多为 **8000 被其他程序占用**；执行 `./scripts/stop.sh` 后 `./scripts/start.sh`，或确认 `http://127.0.0.1:8000/api/health` 含 `llm_mock` |
+| `address already in use` | `backend/.env` 改 `PORT`，并 `export BACKEND_PORT=同端口` 后重启前端 |
+| 前端连不上后端 | 用 `start.sh` 启动（含 Vite 代理）；勿直连错误的 8000 服务 |
+| 大屏无声音 | 使用 Chrome/Edge；需用户与页面有一次点击交互后浏览器才允许 TTS |
+| LLM 始终 Mock | 检查 `backend/.env` 中 `LLM_API_KEY` 是否填写，且 `LLM_USE_MOCK=false` |
 
 ---
 
@@ -102,34 +256,201 @@ chmod +x scripts/start.sh && ./scripts/start.sh
 
 ---
 
-## A4. AI 使用说明
+## A4. AI 工具使用说明与人工分工
 
-| 环节 | AI 作用 | 人工判断 |
-|------|---------|----------|
-| 需求分析 | 辅助归纳 5 条反馈的标签与交叉洞察 | 确定 P0/P1 边界、单诊室 MVP 范围 |
-| 架构设计 | 生成 FastAPI/WebSocket 骨架建议 | 选定内存队列 + 事件广播模型 |
-| Prompt 工程 | 起草紧急度 JSON Schema 与反滥用规则 | 增补「孕晚期腹痛」「VIP」等中文案例与阈值 |
-| 前端 UI | 生成大屏布局 CSS 思路 | 字号 ≥48px、配色对比度人工调校 |
-| TTS | 调研 Web Speech API 可行性 | 确认先中文后英文 0.5s 间隔符合考场场景 |
-| 代码实现 | 生成各模块初稿 | 联调 WS、修正队列排序与 Mock 回退逻辑 |
+本项目涉及 **两类 AI**：一是**开发阶段**用 AI 辅助写代码与文档；二是**运行阶段**用 LLM 做患者「紧急优先」评估（交付物 C1）。二者用途不同，不宜混为一谈。
 
-**原则**：AI 负责扩面和草稿，**产品取舍与医疗安全边界**由人工终审（例如：离线不自动插队、LLM 失败回退规则 Mock）。
+### 使用的 AI 工具（简述）
+
+| 工具 / 能力 | 用途 | 是否接入产品运行时 |
+|-------------|------|-------------------|
+| **Cursor（Agent / 对话）** | 需求整理、代码与 UI 实现、联调排错、README 撰写 | 否（仅开发环境） |
+| **大模型 API**（OpenAI 兼容，默认 MiMo `mimo-v2.5`） | 患者提交理由后的紧急度 JSON 评估 | **是**（`backend/app/llm_service.py`） |
+| **规则 Mock**（关键词，非生成式） | 无 API Key、考场离线、LLM 失败时兜底 | **是**（与 LLM 同接口返回） |
+| **浏览器 Web Speech API** | 大屏双语叫号播报 | **是**（非大模型，本地 TTS） |
+
+未使用 AI 生成图片、视频或预录语音；候诊大屏动效与三端界面均为代码实现（CSS / Vue）。
+
+### 各环节：如何使用、如何分工
+
+| 环节 | AI 做了什么 | 人工做了什么（终审 / 裁量） |
+|------|-------------|---------------------------|
+| **A1–A3 业务分析** | 根据 5 条反馈草拟痛点表、优先级矩阵、离线方案条目 | 确认 MVP 只做单诊室；P0 边界；「离线不自动批准插队」等安全原则 |
+| **架构与接口** | 建议 FastAPI + 内存队列 + WebSocket 事件名 | 采纳「单进程内存队列 + REST 全量 + WS 广播」；否决多 worker（MVP 不一致） |
+| **C1 Prompt 与评估逻辑** | 起草 `SYSTEM_PROMPT`、JSON 字段说明、反 VIP/赶时间条文 | 补充中文场景（孕晚期腹痛、胸闷出血）；**仅当 `approve` 且 `is_medical_emergency` 才插队**；失败回退 Mock |
+| **C1 规则 Mock** | 生成关键词列表初稿 | 核对通过/拒绝/人工复核三类与答辩演示路径一致 |
+| **后端实现** | 生成 `queue_service`、`llm_service`、API 路由初稿 | 联调 WS、10 人 Mock 数据、优先排序、`llm_mock` 健康检查 |
+| **候诊大屏 UI** | 深色科技风布局、叫号蒙层、三语播报调用方式 | 一屏 10 人双列、防 `overflow` 裁切；语音默认开启、连播 3 遍；字号与对比度实测 |
+| **医生控制台 UI** | 炫酷/简洁多套布局草稿 | 定稿白底一屏、上下结构；**工作提示**（按序、可暂停、不必赶） |
+| **患者 H5 UI** | 票号卡片、优先申请弹层、结果区布局 | 修正结果区 flex 错位；**候诊安抚文案**、进度条、轮换小贴士 |
+| **双语 TTS** | 说明 Web Speech API 用法 | 固定「中文 → 0.5s → 英文」；接受浏览器需一次点击才能出声 |
+| **联调与演示脚本** | `start.sh`、Vite 代理思路 | 端口占用检测、`/api/health` 含 `llm_mock` 才算本后端 |
+| **README / 自检清单** | 结构化章节与表格草稿 | 与真实代码路径对齐；勾选可验证项 |
+
+### 运行阶段 LLM（C1）如何使用
+
+1. 患者在 H5 提交 `reason`（一句话症状/理由）。  
+2. 后端 `POST /api/priority/request` 调用 `assess_urgency(reason)`。  
+3. 若已配置 `LLM_API_KEY` 且未强制 Mock：请求 OpenAI 兼容 `chat/completions`，`temperature=0.1`，`response_format=json_object`。  
+4. 解析为 `UrgencyAssessment`；异常或缺 Key 时走 **`_mock_assess` 关键词规则**（与 Prompt 意图一致，保证可演示）。  
+5. **人工规则兜底**：即使模型返回 `approve`，仍要求 `is_medical_emergency=true` 才标记优先；`manual_review` 不自动插队。
+
+配置见 `backend/.env`（示例见 `.env.example`）。是否真调模型以 `GET /api/health` 的 `llm_mock` 为准。
+
+### 分工原则（一句话）
+
+- **AI**：扩面、草稿、重复性代码、Prompt 初稿、多版 UI 探索。  
+- **人工**：医疗与产品红线、能否上线演示、最终交互与文案、联调通过、安全边界（离线、Mock、不自动插队）。
+
+**人工终审红线（本 MVP 明确遵守）**
+
+1. 离线或 LLM 不可用 → 不自动批准优先，仅 Mock/记录。  
+2. LLM 失败 → 回退规则 Mock，不阻塞叫号主流程。  
+3. 非医疗理由（VIP、赶时间等）→ 必须可拒绝（Prompt + Mock 双重保障）。  
+4. 叫号顺序仍以医生端为准；AI 只影响「是否标优先」，不替代医生呼叫。
 
 ---
 
 # 交付物 B & C：实现说明
 
-## 架构
+## 项目架构设计
 
+### 系统总览
+
+```mermaid
+flowchart TB
+    subgraph FE["前端 · Vue 3 Monorepo (pnpm)"]
+        direction LR
+        D["医生端 :5173<br/>呼叫 / 跳过 / 暂停"]
+        S["候诊大屏 :5174<br/>双语展示 · TTS 播报"]
+        P["患者 H5 :5175<br/>排队位置 · 优先申请"]
+        PKG["packages/shared<br/>REST · WS · speakBilingual"]
+        D & S & P --> PKG
+    end
+
+    subgraph DEV["开发环境 · Vite 代理（同源）"]
+        VP["/api → 后端<br/>/ws → WebSocket"]
+    end
+
+    subgraph BE["后端 · FastAPI + uv :8000"]
+        MAIN["app/main.py<br/>REST 路由 · CORS"]
+        WS["ws_manager.py<br/>连接管理 · 广播"]
+        Q["queue_service.py<br/>内存队列 · 事件订阅"]
+        LLM["llm_service.py<br/>紧急度评估"]
+        CFG["config.py · models.py"]
+        MAIN --> Q
+        MAIN --> LLM
+        MAIN --> WS
+        Q -->|"subscribe 事件"| WS
+    end
+
+    subgraph EXT["外部 / 本地能力"]
+        API_LLM["LLM API<br/>OpenAI 兼容"]
+        TTS["Web Speech API<br/>浏览器本地 TTS"]
+    end
+
+    PKG -->|"REST + WS"| VP
+    VP --> MAIN
+    VP --> WS
+    LLM --> API_LLM
+    S -.->|"patient_called"| TTS
+
+    style FE fill:#e8f4fc
+    style BE fill:#f0f7e8
+    style EXT fill:#fff8e6
 ```
-医生端 / 大屏 / 患者 H5
-        │  REST + WebSocket
-        ▼
-   FastAPI 后端
-   ├── QueueService（内存队列，10 名 Mock 患者）
-   ├── ConnectionManager（WS 广播）
-   └── llm_service（OpenAI 兼容 / 规则 Mock）
+
+### 后端模块分层
+
+```mermaid
+flowchart LR
+    subgraph API层
+        R1["GET /api/queue"]
+        R2["POST /api/queue/*"]
+        R3["POST /api/priority/request"]
+        R4["WS /ws"]
+    end
+
+    subgraph 领域服务
+        QS["QueueService<br/>· 10 人 Mock 队列<br/>· call / skip / pause<br/>· 优先排序"]
+        LM["llm_service<br/>· assess_urgency<br/>· JSON 结构化输出<br/>· 失败 → 规则 Mock"]
+    end
+
+    subgraph 基础设施
+        WM["ConnectionManager<br/>· 多端连接<br/>· broadcast 事件"]
+        MEM[("内存状态<br/>MVP 单进程")]
+    end
+
+    R1 & R2 --> QS
+    R3 --> LM
+    LM --> QS
+    QS --> MEM
+    QS -->|"patient_called<br/>queue_updated<br/>calling_paused<br/>priority_applied"| WM
+    R4 --> WM
 ```
+
+### 叫号实时同步时序
+
+```mermaid
+sequenceDiagram
+    actor Doc as 医生端
+    participant API as FastAPI
+    participant Q as QueueService
+    participant WS as ws_manager
+    participant Disp as 候诊大屏
+    participant Pat as 患者 H5
+
+    Doc->>API: POST /api/queue/call-next
+    API->>Q: call_next()
+    Q-->>Q: 更新 current / waiting
+    Q->>WS: publish(patient_called)
+    Q->>WS: publish(queue_updated)
+    par 并行推送
+        WS-->>Disp: WebSocket 事件
+        WS-->>Pat: WebSocket 事件
+        WS-->>Doc: WebSocket 事件
+    end
+    Disp->>Disp: 高亮当前号 + speakBilingual()
+    Pat->>Pat: 弹窗提醒 + 震动
+    Note over Disp,Pat: 断线后 REST GET /api/queue 全量恢复
+```
+
+### 部署拓扑（生产参考）
+
+```mermaid
+flowchart TB
+    subgraph Client["终端"]
+        B1["医生工作站"]
+        B2["候诊电视 / 大屏"]
+        B3["患者手机浏览器"]
+    end
+
+    subgraph Edge["Nginx 反向代理"]
+        NG["/doctor · /display · /patient 静态资源<br/>/api · /ws 转发后端"]
+    end
+
+    subgraph Server["应用服务器"]
+        UV["uvicorn app.main:app<br/>workers=1（内存队列）"]
+    end
+
+    subgraph Future["P1 演进"]
+        REDIS[("Redis / DB<br/>多 worker 状态共享")]
+    end
+
+    B1 & B2 & B3 --> NG
+    NG --> UV
+    UV -.->|"后续替换"| REDIS
+```
+
+**设计要点**
+
+| 层级 | 职责 | 关键文件 |
+|------|------|----------|
+| 表现层 | 三端 UI + 共享 SDK | `frontend/apps/*`、`packages/shared` |
+| 接入层 | REST 全量 + WS 增量 | `backend/app/main.py`、`ws_manager.py` |
+| 领域层 | 队列调度、优先规则 | `backend/app/queue_service.py` |
+| AI 层 | 紧急度 JSON 评估 | `backend/app/llm_service.py` |
+| 数据层 | MVP 内存态（单进程） | `queue_service` 内部状态；生产需 Redis/DB |
 
 ## API 摘要
 
@@ -168,16 +489,6 @@ hospital/
 └── README.md
 ```
 
-## 分步启动（开发）
-
-```bash
-# 终端 1
-cd backend && uv run uvicorn app.main:app --reload --port 8000
-
-# 终端 2
-cd frontend && pnpm run dev
-```
-
 ## 自检清单
 
 - [x] README 含 A1–A4 业务分析
@@ -188,8 +499,4 @@ cd frontend && pnpm run dev
 - [x] 插队申请触发 LLM/Mock 结构化结果
 - [x] 叫号触发双语 TTS
 
----
 
-## License
-
-本项目为技术考试 MVP 示例代码。

@@ -20,8 +20,8 @@ from app.models import (
 def _mock_patients() -> list[Patient]:
     dept, room = settings.department, settings.room
     rows = [
-        ("p001", "A012", "王建国", "Wang Jianguo", PatientStatus.COMPLETED),
-        ("p002", "A013", "陈秀英", "Chen Xiuying", PatientStatus.COMPLETED),
+        ("p001", "A012", "王建国", "Wang Jianguo", PatientStatus.WAITING),
+        ("p002", "A013", "陈秀英", "Chen Xiuying", PatientStatus.WAITING),
         ("p003", "A014", "刘志强", "Liu Zhiqiang", PatientStatus.WAITING, PriorityLevel.URGENT),
         ("p004", "A015", "David Smith", "David Smith", PatientStatus.WAITING),
         ("p005", "A016", "李婷婷", "Li Tingting", PatientStatus.WAITING),
